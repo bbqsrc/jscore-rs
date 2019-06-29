@@ -14,11 +14,9 @@ fn make_bundled() {
         .header(format!("{}/JavaScriptCore/JavaScript.h", &jsc_headers))
         .clang_arg("-U__APPLE__")
         .clang_arg(format!("-I{}", &jsc_headers))
-        // .clang_arg(format!("-isysroot{}", sysroot))
-        // .clang_arg("-iframework JavaScriptCore")
         .generate()
         .expect("Unable to generate bindings");
-        
+
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
@@ -62,8 +60,6 @@ fn make_bundled() {
 }
 
 fn make_system_macos() {
-    panic!();
-    // println!("cargo:rustc-link-lib=framework=JavaScriptCore");
     let sysroot = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
 
     let bindings = bindgen::Builder::default()
@@ -71,6 +67,7 @@ fn make_system_macos() {
             "{}/System/Library/Frameworks/JavaScriptCore.framework/Headers/JavaScriptCore.h",
             sysroot
         ))
+        .clang_arg("-U__APPLE__")
         .clang_arg(format!("-isysroot{}", sysroot))
         .clang_arg("-iframework JavaScriptCore")
         .generate()
