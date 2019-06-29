@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::ptr::null_mut;
 
 use javascriptcore_sys::{
-    JSStringGetMaximumUTF8CStringSize, JSStringGetUTF8CString, JSValueToStringCopy,
+    JSStringGetMaximumUTF8CStringSize, JSStringGetUTF8CString, JSValueToNumber, JSValueToStringCopy,
 };
 
 impl TryFrom<&Value> for std::string::String {
@@ -27,6 +27,17 @@ impl TryFrom<&Value> for String {
                 }
                 Ok(String(string))
             },
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl TryFrom<&Value> for f64 {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(value: &Value) -> Result<f64, Self::Error> {
+        match value.js_type() {
+            ValueType::Number => Ok(unsafe { JSValueToNumber(*value.2, value.0, null_mut()) }),
             _ => unimplemented!(),
         }
     }

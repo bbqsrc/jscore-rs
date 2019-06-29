@@ -39,7 +39,6 @@ unsafe impl Sync for Object {}
 unsafe impl Send for ContextGroup {}
 unsafe impl Sync for ContextGroup {}
 
-
 #[derive(Copy, Clone)]
 pub struct Context(pub(crate) JSContextRef);
 pub struct ContextGroup(pub(crate) JSContextGroupRef);
@@ -139,7 +138,7 @@ impl GlobalContext {
     }
 
     pub async fn evaluate_script<'a>(&'a self, script: &'a String) -> JSValueRef {
-      self.evaluate_script_sync(script)
+        self.evaluate_script_sync(script)
     }
 }
 
