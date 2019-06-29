@@ -1,0 +1,3 @@
+[submodule "javascriptcore-sys/WebKit"]
+	path = javascriptcore-sys/WebKit
+	url = git://git.webkit.org/WebKit.git
