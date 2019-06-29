@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+  "jscore",
+  "javascriptcore-sys"
+]
