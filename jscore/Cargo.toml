@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 javascriptcore-sys = { path = "../javascriptcore-sys" }
+runtime = "0.3.0-alpha.6"
+futures-preview = "0.3.0-alpha.16"

@@ -28,6 +28,18 @@ macro_rules! retain_release {
     };
 }
 
+unsafe impl Send for GlobalContext {}
+unsafe impl Sync for GlobalContext {}
+unsafe impl Send for Context {}
+unsafe impl Sync for Context {}
+unsafe impl Send for String {}
+unsafe impl Sync for String {}
+unsafe impl Send for Object {}
+unsafe impl Sync for Object {}
+unsafe impl Send for ContextGroup {}
+unsafe impl Sync for ContextGroup {}
+
+
 #[derive(Copy, Clone)]
 pub struct Context(pub(crate) JSContextRef);
 pub struct ContextGroup(pub(crate) JSContextGroupRef);
@@ -122,8 +134,12 @@ impl GlobalContext {
         Object(Context(self.0), ptr)
     }
 
-    pub fn evaluate_script(&self, script: &String) -> JSValueRef {
+    pub fn evaluate_script_sync(&self, script: &String) -> JSValueRef {
         unsafe { JSEvaluateScript(self.0, **script, null_mut(), null_mut(), 0, null_mut()) }
+    }
+
+    pub async fn evaluate_script<'a>(&'a self, script: &'a String) -> JSValueRef {
+      self.evaluate_script_sync(script)
     }
 }
 
