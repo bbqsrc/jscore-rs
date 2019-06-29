@@ -10,7 +10,17 @@ fn make_bundled() {
     let webkit_library_dir = here.join("WebKit").join("WebKitBuild").join("Release").join("lib");
     let jsc_headers = format!("{}", here.join("WebKit/WebKitBuild/Release/DerivedSources/ForwardingHeaders").display());
 
-     let bindings = bindgen::Builder::default()
+    let result = Command::new("Tools/Scripts/build-webkit")
+        .current_dir(here.join("WebKit"))
+        .args(&["--jsc-only", "--cmakeargs=\"-DENABLE_STATIC_JSC=ON -DUSE_THIN_ARCHIVES=OFF\""])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .unwrap();
+
+    assert!(result.success());
+
+    let bindings = bindgen::Builder::default()
         .header(format!("{}/JavaScriptCore/JavaScript.h", &jsc_headers))
         .clang_arg("-U__APPLE__")
         .clang_arg(format!("-I{}", &jsc_headers))
@@ -21,16 +31,6 @@ fn make_bundled() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
-
-    let result = Command::new("Tools/Scripts/build-webkit")
-        .current_dir(here.join("WebKit"))
-        .args(&["--jsc-only", "--cmakeargs=\"-DENABLE_STATIC_JSC=ON -DUSE_THIN_ARCHIVES=OFF\""])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .unwrap();
-
-    assert!(result.success());
     
     println!("cargo:rustc-link-search=native={}", webkit_library_dir.display());
 	println!("cargo:rustc-link-lib=static=JavaScriptCore");
