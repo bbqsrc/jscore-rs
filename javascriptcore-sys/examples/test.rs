@@ -124,11 +124,10 @@ extern "C" fn callback_trampoline(
     arguments: *const JSValueRef,
     exception: *mut JSValueRef,
 ) -> JSValueRef {
-    // let callback: &JsCallback = unsafe { JSObjectGetPrivate(function) as _ };
     let callback = unsafe {
         std::mem::transmute::<*mut ::std::os::raw::c_void, JsCallback>(JSObjectGetPrivate(function))
     };
-    println!("Callback {:?}", callback);
+    
     let ctx = Context(ctx);
 
     let args = unsafe {

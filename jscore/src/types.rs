@@ -246,7 +246,7 @@ extern "C" fn callback_trampoline(
     let callback = unsafe {
         std::mem::transmute::<*mut ::std::os::raw::c_void, JsCallback>(JSObjectGetPrivate(function))
     };
-    println!("Callback {:?}", callback);
+
     let ctx = Context(ctx);
 
     let args = unsafe {
@@ -343,7 +343,6 @@ impl Value {
 impl Object {
     pub fn make_function_with_callback(&self, name: &String, callback: JsCallback) -> Object {
         let cls = unsafe { JSClassCreate(&rust_function_defn(name)) };
-        println!("{:?}", callback);
         let ptr = unsafe { JSObjectMake(*self.0, cls, callback as _) };
         if unsafe { JSObjectGetPrivate(ptr) } == null_mut() {
             panic!("No private");

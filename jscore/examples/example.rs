@@ -33,9 +33,6 @@ async fn main() {
     let ctx = ctx_group.create_global_context();
     let global = ctx.global_object();
 
-    // let fn_name = &js::String::new("log").unwrap();
-    // let fn_obj = global.make_function_with_callback(fn_name, log).to_js_value();
-    // global.set_property(fn_name, fn_obj);
     ctx.add_function("log", log);
     ctx.add_function("passthrough", passthrough);
 
