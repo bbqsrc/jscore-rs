@@ -1,4 +1,5 @@
 use javascriptcore_sys::*;
+use std::convert::TryFrom;
 use std::ffi::CString;
 use std::ops::Deref;
 use std::ptr::{null, null_mut};
@@ -38,13 +39,56 @@ unsafe impl Send for Object {}
 unsafe impl Sync for Object {}
 unsafe impl Send for ContextGroup {}
 unsafe impl Sync for ContextGroup {}
+unsafe impl Send for Value {}
+unsafe impl Sync for Value {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Context(pub(crate) JSContextRef);
 pub struct ContextGroup(pub(crate) JSContextGroupRef);
 pub struct GlobalContext(pub(crate) JSGlobalContextRef);
 pub struct Object(pub(crate) Context, pub(crate) JSObjectRef);
 pub struct String(pub(crate) JSStringRef);
+
+use std::fmt;
+
+impl fmt::Debug for Object {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = f.debug_struct("Object");
+
+        unsafe {
+            let array = JSObjectCopyPropertyNames(*self.0, self.1);
+            let size = JSPropertyNameArrayGetCount(array);
+            for i in 0..size {
+                let js_ref = JSPropertyNameArrayGetNameAtIndex(array, i);
+                let prop_name = std::string::String::from(&String(js_ref));
+                let prop_value = Value::from(
+                    self.0,
+                    JSObjectGetPropertyAtIndex(*self.0, self.1, i as u32, null_mut()),
+                );
+                s.field(&prop_name, &format!("{:?}", prop_value));
+            }
+        }
+
+        s.finish()
+    }
+}
+
+impl fmt::Debug for Exception {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Exception")
+            .field("stack", &self.stack())
+            .field("message", &self.message())
+            .finish()
+    }
+}
+
+impl fmt::Display for Exception {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "Message: {}", &self.message())?;
+        writeln!(f, "Stack:")?;
+        write!(f, "{}", self.stack())
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum ValueType {
@@ -57,6 +101,7 @@ pub enum ValueType {
     Symbol,
 }
 
+#[derive(Debug)]
 pub struct Value(
     pub(crate) JSValueRef,
     pub(crate) ValueType,
@@ -127,18 +172,63 @@ impl ContextGroup {
     }
 }
 
+pub struct Exception(Object);
+
+impl Exception {
+    pub fn stack(&self) -> std::string::String {
+        let stack_val = self
+            .0
+            .get_property(&String::new("stack").unwrap())
+            .expect("no `stack` property found");
+        let stack_str = String::try_from(&stack_val).expect("no string property found for `stack`");
+        std::string::String::from(&stack_str)
+    }
+
+    pub fn message(&self) -> std::string::String {
+        let message_val = self
+            .0
+            .get_property(&String::new("message").unwrap())
+            .expect("no `message` property found");
+        let message_str =
+            String::try_from(&message_val).expect("no string property found for `message`");
+        std::string::String::from(&message_str)
+    }
+}
+
 impl GlobalContext {
     pub fn global_object(&self) -> Object {
         let ptr = unsafe { JSContextGetGlobalObject(self.0) };
         Object(Context(self.0), ptr)
     }
 
-    pub fn evaluate_script_sync(&self, script: &String) -> JSValueRef {
-        unsafe { JSEvaluateScript(self.0, **script, null_mut(), null_mut(), 0, null_mut()) }
+    pub fn evaluate_script_sync(&self, script: &String) -> Result<Value, Exception> {
+        let mut exception = null();
+        let ret = unsafe {
+            JSEvaluateScript(self.0, **script, null_mut(), null_mut(), 0, &mut exception)
+        };
+        if exception == null_mut() {
+            Ok(Value::from(Context(self.0), ret))
+        } else {
+            let value = Value::from(Context(self.0), exception);
+            let obj = Object::try_from(&value).unwrap();
+            Err(Exception(obj))
+        }
     }
 
-    pub async fn evaluate_script<'a>(&'a self, script: &'a String) -> JSValueRef {
+    pub async fn evaluate_script<'a>(&'a self, script: &'a String) -> Result<Value, Exception> {
         self.evaluate_script_sync(script)
+    }
+
+    pub fn add_function(
+        &self,
+        name: &str,
+        callback: JsCallback,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let name = String::new(name).unwrap();
+        let obj = self.global_object();
+        let fn_obj = obj.make_function_with_callback(&name, callback);
+        obj.set_property(&name, Value::from(Context(self.0), *fn_obj));
+        Ok(())
     }
 }
 
@@ -162,7 +252,7 @@ extern "C" fn callback_trampoline(
     let args = unsafe {
         std::slice::from_raw_parts(arguments, argument_count)
             .into_iter()
-            .map(|v| Value(*v, ValueType::from(ctx, *v), ctx))
+            .map(|v| Value::from(ctx, *v))
             .collect::<Vec<_>>()
     };
 
@@ -188,6 +278,36 @@ impl ValueType {
             5 => ValueType::Object,
             6 => ValueType::Symbol,
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Value {
+    fn from(ctx: Context, value_ref: JSValueRef) -> Value {
+        Value(value_ref, unsafe { ValueType::from(ctx, value_ref) }, ctx)
+    }
+
+    pub fn to_string(&self) -> std::string::String {
+        match self.js_type() {
+            ValueType::String => {
+                let js_str = String::try_from(self).expect("string");
+                std::string::String::from(&js_str)
+            }
+            ValueType::Number => {
+                let n = f64::try_from(self).expect("f64");
+                format!("{}", n)
+            }
+            ValueType::Boolean => {
+                let v = bool::try_from(self).expect("bool");
+                format!("{}", v)
+            }
+            ValueType::Null => "null".into(),
+            ValueType::Undefined => "undefined".into(),
+            ValueType::Symbol => "Symbol(...)".into(),
+            ValueType::Object => {
+                let obj = Object::try_from(self).expect("object");
+                format!("{:?}", obj)
+            }
         }
     }
 }
@@ -231,8 +351,22 @@ impl Object {
         Object(self.0, ptr)
     }
 
-    pub fn set_property(&self, name: &String, value: JSValueRef) {
-        unsafe { JSObjectSetProperty(*self.0, self.1, **name, value, 0, null_mut()) };
+    pub fn set_property(&self, name: &String, value: Value) {
+        unsafe { JSObjectSetProperty(*self.0, self.1, **name, value.0, 0, null_mut()) };
+    }
+
+    pub fn get_property(&self, name: &String) -> Result<Value, Value> {
+        let mut exception = null();
+        let ret = unsafe { JSObjectGetProperty(*self.0, self.1, **name, &mut exception) };
+        if exception == null() {
+            Ok(Value::from(self.0, ret))
+        } else {
+            Err(Value::from(self.0, exception))
+        }
+    }
+
+    pub fn to_js_value(&self) -> Value {
+        Value(self.1, ValueType::Object, self.0)
     }
 }
 
